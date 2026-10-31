@@ -14,4 +14,11 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  server: {
+    watch: {
+      // Exclude the WhatsApp Web JS browser session folder — it holds
+      // locked Chromium files that trigger EBUSY errors on Windows.
+      ignored: ['**/backend/.wwebjs_auth/**'],
+    },
+  },
 })

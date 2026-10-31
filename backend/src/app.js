@@ -13,6 +13,7 @@ import adminRoutes from "./routes/adminRoutes.js";
 import functionRoutes from "./routes/functionRoutes.js";
 import designRoutes from "./routes/designRoutes.js";
 import uploadRoutes from "./routes/uploadRoutes.js";
+import whatsappRoutes from "./routes/whatsappRoutes.js";
 import { notFound, errorHandler } from "./middleware/error.js";
 import { storageRoot } from "./services/storage/index.js";
 
@@ -81,6 +82,7 @@ export function createApp() {
   app.use("/api", functionRoutes);
   app.use("/api", designRoutes);
   app.use("/api", uploadRoutes);
+app.use("/api", whatsappRoutes);
 
   // Error handling
   app.use(notFound);

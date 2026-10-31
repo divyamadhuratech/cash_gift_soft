@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { ArrowRight, CirclePlus, Clock3, Gift, Sparkles, Undo2 } from 'lucide-react'
+import { useEffect, useRef, useState, useCallback } from 'react'
+import { ArrowRight, CirclePlus, Clock3, Gift, MessageCircle, RefreshCw, Sparkles, Undo2, Wifi, WifiOff } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { AppShell, PageHeading, PaymentBadge, PillToggle, SectionTitle, Surface, UiText } from '@/components/ceremony/shared'
 import { ThanglishComposer } from '@/components/ceremony/thanglish-composer'
@@ -7,6 +7,7 @@ import { EntryFieldInput } from '@/components/ceremony/entry-field-input'
 import { useCeremony, localized, collectionFormDescription, collectionFormTitle, collectionPlaceholder, defaultCollectionMode, defaultEntryFields, formatRupees, paymentDetailFields, paymentReferenceText, syncNotice, totalFor } from '@/components/ceremony-provider'
 import { paymentModes } from '@/components/ceremony/types'
 import { conversionFlow, convertTamilWord, tamilModeLabel, tamilValidationExamples } from '@/lib/tamil-transliteration'
+import { whatsappApi } from '@/lib/ceremony-api'
 
 const modeStorageKey = 'muhurtham-last-payment-mode'
 const fastModeStorageKey = 'muhurtham-fast-entry-mode'
@@ -32,10 +33,17 @@ export function CollectionScreen() {
   const [language, setLanguage] = useState('English')
   const [nameInputMode, setNameInputMode] = useState('English')
   const [cityInputMode, setCityInputMode] = useState('English')
+  const [moreDetails, setMoreDetails] = useState(false)
   const [fastMode, setFastMode] = useState(false)
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
+  const [whatsappNumber, setWhatsappNumber] = useState('')
   const [draftNotice, setDraftNotice] = useState('')
+  // WhatsApp connection state
+  const [waStatus, setWaStatus] = useState({ ready: false, hasQr: false, qrDataUrl: null })
+  const [waStatusLoading, setWaStatusLoading] = useState(false)
+  const [waSending, setWaSending] = useState(false)
+  const waPollerRef = useRef(null)
   const parsedAmount = Number(amount.replace(/[^\d.]/g, '')) || 0
 
   useEffect(() => {
@@ -78,6 +86,31 @@ export function CollectionScreen() {
     setSelectedEntry(editingEntry)
   }, [editingEntry, setSelectedEntry])
 
+  // Poll WhatsApp status every 5 s while not ready (to refresh QR / detect connect)
+  const fetchWaStatus = useCallback(async () => {
+    try {
+      const data = await whatsappApi.status()
+      setWaStatus(data)
+    } catch {
+      // backend might be offline — keep showing last known state
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchWaStatus()
+    waPollerRef.current = window.setInterval(() => {
+      // Stop polling once connected — saves requests during a live event
+      setWaStatus((current) => {
+        if (current.ready) {
+          window.clearInterval(waPollerRef.current)
+        }
+        return current
+      })
+      fetchWaStatus()
+    }, 5000)
+    return () => window.clearInterval(waPollerRef.current)
+  }, [fetchWaStatus])
+
   function changeMode(nextMode) {
     setMode(nextMode)
     // Manual references belong to one mode — drop the ones that no longer apply.
@@ -94,6 +127,7 @@ export function CollectionScreen() {
     setGiftType('')
     setCustomValues({})
     setPaymentDetails({})
+    setWhatsappNumber('')
     setError('')
     setDraftEntry(null)
     setDraftNotice('')
@@ -109,6 +143,7 @@ export function CollectionScreen() {
     setGiftType('')
     setCustomValues({})
     setPaymentDetails({})
+    setWhatsappNumber('')
     setError('')
     setMoreDetails(false)
     setDraftNotice('Draft held — inputs cleared. Continue later or clear the draft.')
@@ -189,13 +224,33 @@ export function CollectionScreen() {
       setError(result?.error ?? localized(uiLanguage, 'Could not save this gift.', 'இந்த பரிசைச் சேமிக்க முடியவில்லை.'))
       return
     }
-    const saved = result.value
-    recentSaves.current.push({ name: cleanName, amount: parsedAmount, at: now })
-    setError('')
-    setSelectedEntry(saved)
-    setToast(`✓ ${saved.receipt} saved`)
-    clearForm()
+const saved = result.value
+recentSaves.current.push({ name: cleanName, amount: parsedAmount, at: now })
+setError('')
+setSelectedEntry(saved)
+setToast(`✓ ${saved.receipt} saved`)
+clearForm()
+window.setTimeout(() => setToast(''), 3200)
+if (whatsappNumber.trim()) {
+  const cleaned = whatsappNumber.replace(/[\s+\-()]/g, '')
+  if (!waStatus.ready) {
+    setToast('WhatsApp not connected — receipt not sent')
     window.setTimeout(() => setToast(''), 3200)
+  } else {
+    setWaSending(true)
+    const message = `🎁 *Gift Receipt*\n\nThank you for your blessings!\n\n*Name:* ${cleanName}\n*Amount:* ₹${parsedAmount.toLocaleString('en-IN')}\n*Payment Mode:* ${mode}\n*Date:* ${new Date().toLocaleDateString('en-IN')}\n*Receipt ID:* ${saved.receipt}`
+    whatsappApi.sendReceipt(cleaned, message)
+      .then(() => {
+        setToast('✓ WhatsApp receipt sent')
+        window.setTimeout(() => setToast(''), 3200)
+      })
+      .catch(() => {
+        setToast('WhatsApp receipt failed to send')
+        window.setTimeout(() => setToast(''), 3200)
+      })
+      .finally(() => setWaSending(false))
+  }
+}
   }
 
   async function undoLast() {
@@ -243,6 +298,51 @@ return <AppShell>
             {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
             {(draftEntry || draftNotice) && <div className="rounded-xl border border-primary/25 bg-primary/5 px-4 py-3 text-sm text-primary" role="status">{draftNotice || 'One entry is held as a draft.'}</div>}
 
+
+            {/* ── WhatsApp ─────────────────────────────── */}
+            <div className="rounded-2xl border border-border bg-secondary/30 p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[.12em] text-muted-foreground"><MessageCircle className="size-3.5" />WhatsApp receipt</p>
+                <span className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ${waStatus.ready ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                  {waStatus.ready ? <><Wifi className="size-3" />Connected</> : <><WifiOff className="size-3" />Not connected</>}
+                </span>
+              </div>
+
+              {/* QR panel — only while waiting to connect */}
+              {!waStatus.ready && waStatus.qrDataUrl && (
+                <div className="mb-3 flex flex-col items-center gap-2 rounded-xl border border-border bg-background p-4">
+                  <p className="text-xs text-muted-foreground">Scan this QR code in WhatsApp on your phone</p>
+                  <img src={waStatus.qrDataUrl} alt="WhatsApp QR code" className="size-40 rounded-lg" />
+                  <button type="button" onClick={async () => { setWaStatusLoading(true); await fetchWaStatus(); setWaStatusLoading(false) }} disabled={waStatusLoading} className="flex items-center gap-1.5 text-xs text-primary">
+                    <RefreshCw className={`size-3 ${waStatusLoading ? 'animate-spin' : ''}`} />Refresh
+                  </button>
+                </div>
+              )}
+
+              {!waStatus.ready && !waStatus.qrDataUrl && (
+                <p className="mb-3 text-xs text-muted-foreground">
+                  Start the backend server — a QR code will appear here once WhatsApp Web initialises.
+                </p>
+              )}
+
+              <label className="block">
+                <span className="form-label">Guest WhatsApp number <span className="font-normal text-muted-foreground">(optional)</span></span>
+                <input
+                  className="form-input"
+                  value={whatsappNumber}
+                  onChange={(e) => setWhatsappNumber(e.target.value)}
+                  placeholder="e.g. 9876543210 or 919876543210"
+                  inputMode="tel"
+                  disabled={!waStatus.ready}
+                />
+              </label>
+              {!waStatus.ready && (
+                <p className="mt-1.5 text-xs text-muted-foreground">Connect WhatsApp above to enable sending.</p>
+              )}
+              {waSending && (
+                <p className="mt-1.5 text-xs text-primary">Sending WhatsApp receipt…</p>
+              )}
+            </div>
             <div className="flex flex-col gap-3 sm:flex-row"><button type="submit" className="primary-action flex-1"><Gift className="size-4" />{editingEntry ? 'Save Changes' : 'Save & Print Receipt'}<ArrowRight className="size-4" /></button><button type="button" onClick={holdDraft} className="text-link px-2 text-sm">Hold draft</button><button type="button" onClick={clearForm} className="text-link px-2 text-sm">Clear</button></div>
             <p className="text-center text-xs text-muted-foreground">{localized(uiLanguage, syncNotice, 'உங்கள் பதிவுகள் உங்கள் கணக்கில் சேமிக்கப்படும்.')}</p>
           </form>

@@ -64,6 +64,14 @@ export const designsApi = {
   duplicate: (id) => api.post(`/designs/${id}/duplicate`).then(unwrap),
 };
 
+export const whatsappApi = {
+  /** Returns { ready, hasQr, qrDataUrl } */
+  status: () => api.get("/whatsapp/status").then(unwrap),
+  /** Send a text receipt via WhatsApp. phone must be digits only (no + or spaces). */
+  sendReceipt: (phone, message) =>
+    api.post("/whatsapp/send-receipt", { phone, message }).then(unwrap),
+};
+
 export const uploadsApi = {
   info: () => api.get("/uploads/info").then(unwrap),
   upload: (file, folder = "misc") => {
@@ -85,4 +93,4 @@ export const resolveAssetUrl = (url) => {
   return `${base}${url.startsWith("/") ? "" : "/"}${url}`;
 };
 
-export default { functionsApi, entriesApi, designsApi, uploadsApi, describeError, resolveAssetUrl };
+export default { functionsApi, entriesApi, designsApi, whatsappApi, uploadsApi, describeError, resolveAssetUrl };
