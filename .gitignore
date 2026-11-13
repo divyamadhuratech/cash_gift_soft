@@ -37,3 +37,5 @@ backend/node_modules/
 *.njsproj
 *.sln
 *.sw?
+backend/.wwebjs_cache/
+backend/.wwebjs_auth/
