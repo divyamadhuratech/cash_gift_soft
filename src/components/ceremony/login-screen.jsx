@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowRight, Eye, EyeOff, LockKeyhole, Sparkles, UserRound } from 'lucide-react'
 import { LogoLockup } from '@/components/ceremony/shared'
-import { loginPageSubtitle, loginPageTitle } from '@/components/ceremony-provider'
-import { useAuth } from '@/contexts/AuthContext'
+import { loginPageSubtitle, loginPageTitle } from '@/constants/ceremony-catalog'
+import { useAuth } from '@/contexts/useAuth'
 import { api, googleLoginUrl } from '@/lib/api'
 
 /** Google's four-colour mark, inlined so no extra request is needed. */

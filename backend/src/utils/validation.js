@@ -20,12 +20,16 @@ export const validate = (schema) => (req, res, next) => {
   return next();
 };
 
+/**
+ * Public registration is deliberately strict: unknown keys (notably `role`)
+ * are rejected instead of ignored, so an attempt to self-assign privileges is
+ * visible to the caller and cannot silently reach the service layer.
+ */
 export const registerSchema = z.object({
   email: z.string().email("Enter a valid email"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   displayName: z.string().max(100).optional(),
-  role: z.enum(["admin", "user"]).optional(),
-});
+}).strict();
 
 export const loginSchema = z.object({
   email: z.string().email("Enter a valid email"),
@@ -69,7 +73,7 @@ const makePartial = (shape) => Object.fromEntries(Object.entries(shape).map(([ke
 const functionShape = {
   name: z.string().min(1, "Function name is required").max(120),
   tamil: z.string().max(120).optional(),
-  type: z.enum(["Wedding", "Engagement", "Birthday", "Housewarming", "Temple", "Anniversary", "Custom"]).optional(),
+  type: z.string().trim().max(60).optional(),
   category: z.enum(["Family celebration", "Religious function", "Community event", "Other"]).optional(),
   venue: z.string().max(200).optional(),
   date: isoDate.optional(),

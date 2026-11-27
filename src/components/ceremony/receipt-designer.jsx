@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   AlignCenter,
   AlignJustify,
@@ -28,7 +28,7 @@ import { DESIGN_TEMPLATES, TOKEN_HINTS, applyTokens, templateById } from '@/lib/
 import { BORDER_STYLES, borderCss, hexToRgb, normalizeHex, rgbToHex } from '@/lib/border-styles'
 import { uploadsApi, resolveAssetUrl } from '@/lib/ceremony-api'
 import { translate } from '@/lib/tamil-ui'
-import { canvasPaperStyle } from '@/components/ceremony/receipt-renderer'
+import { canvasPaperStyle } from '@/lib/receipt-canvas'
 import { cn } from '@/lib/utils'
 
 const ALIGN_OPTIONS = [
@@ -401,8 +401,12 @@ function LayersPanel({ t, elements, selectedId, onSelect, onMove, onToggle, onDe
 
 function Inspector({ t, design, selected, patch, patchElement, accent, borderColor, accentOpen, setAccentOpen, borderOpen, setBorderOpen, recentColours, onCommitAccent, rememberColour, busy, logoInput, backgroundInput, onUpload, onDuplicate, onDelete, onEditCanvas, canDelete }) {
   const [hexDraft, setHexDraft] = useState(accent)
+  const [prevAccent, setPrevAccent] = useState(accent)
   const rgb = useMemo(() => hexToRgb(accent), [accent])
-  useEffect(() => setHexDraft(accent), [accent])
+  if (accent !== prevAccent) {
+    setPrevAccent(accent)
+    setHexDraft(accent)
+  }
 
   return <section className="rounded-[22px] border border-border bg-card p-5 shadow-[0_7px_28px_#25291a08]">
     <div className="designer-panel-title"><span>{t('Inspector')}</span><SlidersHorizontal className="size-3.5" /></div>

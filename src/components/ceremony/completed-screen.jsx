@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Archive, CalendarDays, ChevronDown, MapPin, Printer, RotateCcw } from 'lucide-react'
 import { AppShell, PageHeading, PaymentBadge, Surface, UiText } from '@/components/ceremony/shared'
-import { formatRupees, formatScheduleDate, localized, useCeremony } from '@/components/ceremony-provider'
+import { useCeremony } from '@/contexts/ceremony-context'
+import { formatRupees, formatScheduleDate, localized } from '@/lib/ceremony-format'
 import { printEntriesReport, reportTotal } from '@/lib/entries-report'
 
 export function CompletedScreen() {

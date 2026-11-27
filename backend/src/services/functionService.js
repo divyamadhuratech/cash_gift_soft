@@ -29,6 +29,25 @@ export const findOpenCollection = (owner, excludeId = null) => {
 export const openLockMessage = (record) =>
   `Close "${record.name}" before opening another collection. Only one collection can be open at a time.`;
 
+/**
+ * The dedup key for functions: one owner may not hold two *active* functions
+ * with the same name on the same date. The setup wizard used to be able to
+ * fire this handler repeatedly (auto-save effect, double clicks) and every
+ * call created a fresh record, so the calendar showed the same celebration
+ * dozens of times. Mirrors the partial unique index built in database.js.
+ */
+const findDuplicateFunction = (owner, body) => {
+  const filter = { owner, archived: false, name: String(body.name ?? "").trim() };
+  if (body.date) filter.date = body.date;
+  return CeremonyFunction.findOne(filter).lean();
+};
+
+const duplicatePayload = (record) => ({
+  message: "Function already exists",
+  function: record,
+  duplicate: true,
+});
+
 export const listFunctions = async (req, res) => {
   try {
     const filter = { owner: req.user._id };
@@ -64,6 +83,11 @@ export const getFunction = async (req, res) => {
 export const createFunction = async (req, res) => {
   try {
     const body = req.validated ?? req.body;
+    // Idempotent create: returning the existing record (200) lets a repeated
+    // or racing save resolve to the same function instead of a duplicate row.
+    const existing = await findDuplicateFunction(req.user._id, body);
+    if (existing) return res.status(200).json(duplicatePayload(existing));
+
     const created = await CeremonyFunction.create({
       ...body,
       entryFields: withOrder(body.entryFields),
@@ -73,6 +97,17 @@ export const createFunction = async (req, res) => {
     });
     return res.status(201).json({ message: "Function created", function: created.toObject({ flattenMaps: true }) });
   } catch (error) {
+    if (error?.code === 11000) {
+      // Two concurrent creates passed the check above; the unique index caught
+      // the loser. Answer with the winner so the caller still succeeds.
+      try {
+        const existing = await findDuplicateFunction(req.user._id, req.validated ?? req.body);
+        if (existing) return res.status(200).json(duplicatePayload(existing));
+      } catch (lookupError) {
+        console.error("createFunction duplicate lookup error:", lookupError);
+      }
+      return fail(res, 409, "A function with this name and date already exists");
+    }
     console.error("createFunction error:", error);
     return res.status(500).json({ message: "Failed to create function", error: error.message });
   }
@@ -94,6 +129,9 @@ export const updateFunction = async (req, res) => {
     if (!updated) return fail(res, 404, "Function not found");
     return res.json({ message: "Function updated", function: updated.toObject({ flattenMaps: true }) });
   } catch (error) {
+    if (error?.code === 11000) {
+      return fail(res, 409, "Another function with this name and date already exists");
+    }
     console.error("updateFunction error:", error);
     return res.status(500).json({ message: "Failed to update function", error: error.message });
   }

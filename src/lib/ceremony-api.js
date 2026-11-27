@@ -70,6 +70,8 @@ export const whatsappApi = {
   /** Send a text receipt via WhatsApp. phone must be digits only (no + or spaces). */
   sendReceipt: (phone, message) =>
     api.post("/whatsapp/send-receipt", { phone, message }).then(unwrap),
+  /** Disconnect, wipe the stored session, and re-init so a fresh QR is generated. */
+  reset: () => api.post("/whatsapp/reset").then(unwrap),
 };
 
 export const uploadsApi = {

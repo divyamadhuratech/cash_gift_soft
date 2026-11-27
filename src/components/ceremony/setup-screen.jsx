@@ -11,10 +11,10 @@ import { uploadsApi, resolveAssetUrl } from '@/lib/ceremony-api'
 import { templateById } from '@/lib/design-templates'
 import { translate } from '@/lib/tamil-ui'
 import { cn } from '@/lib/utils'
+import { useCeremony } from '@/contexts/ceremony-context'
+import { localized } from '@/lib/ceremony-format'
+import { defaultEntriesDesign, normalizeReceiptDesign } from '@/lib/receipt-design'
 import {
-  useCeremony,
-  localized,
-  defaultEntriesDesign,
   defaultDetailFields,
   defaultEntryFields,
   defaultFunctionDetails,
@@ -26,13 +26,12 @@ import {
   entryFieldCatalog,
   inviteeGroups,
   languageOptions,
-  normalizeReceiptDesign,
   setupStepCount,
   setupStepDescriptions,
   setupStepNames,
   setupStepTamilDescriptions,
   setupStepTamilNames,
-} from '@/components/ceremony-provider'
+} from '@/constants/ceremony-catalog'
 import { clearPendingFunctionId, clearSetupDraft, readSetupDraft, resolveFunctionId, writeSetupDraft } from '@/lib/setup-draft'
 
 export function SetupScreen() {
@@ -55,9 +54,21 @@ export function SetupScreen() {
   const [design, setDesign] = useState(() => seedDesign(receiptDesign))
   const [stepErrors, setStepErrors] = useState([])
   const [saveError, setSaveError] = useState('')
+  const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState(restored.step > 0 ? localized(uiLanguage, `Resumed from step ${restored.step + 1} of ${setupStepCount}.`, `படி ${restored.step + 1} / ${setupStepCount} இலிருந்து தொடர்கிறது.`) : '')
   const backgroundInput = useRef(null)
   const logoInput = useRef(null)
+
+  /**
+   * Guards the step-6 auto-save below. Without them every re-render of the
+   * provider (each save appends to `scheduledFunctions`, which used to change
+   * `updateFunctionDetails`'s identity) re-fired this effect and POSTed the
+   * same function again — dozens of duplicate records. StrictMode's double
+   * mount also fired it twice per visit.
+   */
+
+  const autosaveInFlight = useRef(false)
+  const autosaveSignature = useRef('')
   const t = (text) => translate(text, uiLanguage)
 
   useEffect(() => {
@@ -65,10 +76,13 @@ export function SetupScreen() {
   }, [functionId, step, details, detailFields, entryFields, groups, language, entriesDesign])
 
   // Step 3's choice sets the receipt language; keep the designer in sync so
-  // the step-6 preview and the saved design both reflect it.
-  useEffect(() => {
+  // the step-6 preview and the saved design both reflect it. Adjusted during
+  // render instead of in an effect.
+  const [prevLanguage, setPrevLanguage] = useState(language)
+  if (language !== prevLanguage) {
+    setPrevLanguage(language)
     setDesign((current) => (current.language === language ? current : { ...current, language }))
-  }, [language])
+  }
 
   function addGroup() {
     const value = newGroup.trim()
@@ -80,6 +94,7 @@ export function SetupScreen() {
    * Every step's blocking problems. Steps with nothing mandatory return an empty
    * list, which is what lets the user walk straight through them.
    */
+  
   function problemsForStep(index) {
     const problems = []
     if (index === 0) {
@@ -164,8 +179,17 @@ export function SetupScreen() {
 
   useEffect(() => {
     if (step !== setupStepCount - 1) return
-    updateFunctionDetails({ ...details, id: functionId, entryFields, detailFields, inviteeGroups: groups, language })
-  }, [step])
+    const payload = { ...details, id: functionId, entryFields, detailFields, inviteeGroups: groups, language }
+    const signature = JSON.stringify(payload)
+    // Skip while a save is in flight and when nothing changed since the last
+    // one — the payload is what must be unique, not the callback identity.
+    if (autosaveInFlight.current || signature === autosaveSignature.current) return
+    autosaveInFlight.current = true
+    autosaveSignature.current = signature
+    Promise.resolve(updateFunctionDetails(payload))
+      .then((result) => { if (result?.ok === false) autosaveSignature.current = '' })
+      .finally(() => { autosaveInFlight.current = false })
+  }, [step, details, functionId, entryFields, detailFields, groups, language, updateFunctionDetails])
 
   const isNewFunction = !editId || resumeMode === 'new'
 
@@ -181,6 +205,9 @@ export function SetupScreen() {
   }
 
   async function finish() {
+    // Ignore repeats while a save is still running — a double click used to
+    // POST the same setup twice and create a second identical record.
+    if (saving) return
     // Re-check every step: the details are what actually gets persisted.
     for (let index = 0; index < setupStepCount; index += 1) {
       const problems = problemsForStep(index)
@@ -191,38 +218,43 @@ export function SetupScreen() {
       }
     }
     setStepErrors([])
-    // Both writes must land before navigating, otherwise the wizard can
-    // "succeed" while the record never reached the API.
-    const [savedFunction] = await Promise.all([
-      updateFunctionDetails({ ...details, id: functionId, entryFields, detailFields, inviteeGroups: groups, language }),
-      persist(),
-    ])
-    if (savedFunction && savedFunction.ok === false) {
-      setNotice(savedFunction.error)
-      setSaveError(savedFunction.error)
-      return
-    }
-    setSaveError('')
-    clearSetupDraft(functionId)
-    if (isNewFunction) clearPendingFunctionId()
+    setSaving(true)
+    try {
+      // Both writes must land before navigating, otherwise the wizard can
+      // "succeed" while the record never reached the API.
+      const [savedFunction] = await Promise.all([
+        updateFunctionDetails({ ...details, id: functionId, entryFields, detailFields, inviteeGroups: groups, language }),
+        persist(),
+      ])
+      if (savedFunction && savedFunction.ok === false) {
+        setNotice(savedFunction.error)
+        setSaveError(savedFunction.error)
+        return
+      }
+      setSaveError('')
+      clearSetupDraft(functionId)
+      if (isNewFunction) clearPendingFunctionId()
 
-    const saved = savedFunction?.value
-    // A collection was already open: the setup is stored but must not take it
-    // over, so say so and send the user to the calendar instead of a collection
-    // that is not theirs.
-    if (saved?.activationBlocked) {
-      const message = localized(
-        uiLanguage,
-        `Saved as Upcoming. Close "${saved.holderName}" first — only one collection can be open at a time.`,
-        `வரவிருக்கும் நிகழ்ச்சியாகச் சேமிக்கப்பட்டது. முதலில் "${saved.holderName}" ஐ மூடவும் — ஒரே நேரத்தில் ஒரு சேகரிப்பே திறக்க முடியும்.`,
-      )
-      setNotice(message)
-      navigate('/calendar', { state: { notice: message } })
-      return
-    }
+      const saved = savedFunction?.value
+      // A collection was already open: the setup is stored but must not take it
+      // over, so say so and send the user to the calendar instead of a collection
+      // that is not theirs.
+      if (saved?.activationBlocked) {
+        const message = localized(
+          uiLanguage,
+          `Saved as Upcoming. Close "${saved.holderName}" first — only one collection can be open at a time.`,
+          `வரவிருக்கும் நிகழ்ச்சியாகச் சேமிக்கப்பட்டது. முதலில் "${saved.holderName}" ஐ மூடவும் — ஒரே நேரத்தில் ஒரு சேகரிப்பே திறக்க முடியும்.`,
+        )
+        setNotice(message)
+        navigate('/calendar', { state: { notice: message } })
+        return
+      }
 
-    setNotice(localized(uiLanguage, existing && !isNewFunction ? 'Setup updated for this function.' : 'Function setup saved. Ready to collect.', existing && !isNewFunction ? 'இந்த நிகழ்ச்சிக்கான அமைப்பு புதுப்பிக்கப்பட்டது.' : 'நிகழ்ச்சி அமைப்பு சேமிக்கப்பட்டது. சேகரிக்கத் தயார்.'))
-    navigate(existing && !isNewFunction ? '/calendar' : '/collection')
+      setNotice(localized(uiLanguage, existing && !isNewFunction ? 'Setup updated for this function.' : 'Function setup saved. Ready to collect.', existing && !isNewFunction ? 'இந்த நிகழ்ச்சிக்கான அமைப்பு புதுப்பிக்கப்பட்டது.' : 'நிகழ்ச்சி அமைப்பு சேமிக்கப்பட்டது. சேகரிக்கத் தயார்.'))
+      navigate(existing && !isNewFunction ? '/calendar' : '/collection')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const previewHtml = useMemo(() => buildEntriesReportHtml({
@@ -255,6 +287,7 @@ export function SetupScreen() {
 
   return <AppShell>
     <div className="flex flex-col gap-6">
+      
       <PageHeading
         eyebrow={existing && !isNewFunction ? 'EDIT A CELEBRATION' : 'A NEW CELEBRATION'}
         eyebrowTamil={existing && !isNewFunction ? 'ஒரு கொண்டாட்டத்தைத் திருத்து' : 'புதிய கொண்டாட்டம்'}
@@ -264,6 +297,7 @@ export function SetupScreen() {
         subtitleTamil={existing && !isNewFunction ? 'இந்த நிகழ்ச்சியின் விவரங்களைப் புதுப்பிக்கவும். ரசீதுகள் மற்றும் பதிவுகள் மாறாது.' : 'நிகழ்ச்சி விவரங்கள் முதல் அச்சிக்கப்படும் ரசீது வரை ஆறு படிகள்.'}
         action={<Link to="/calendar" className="secondary-action"><ArrowLeft className="size-4" /><UiText english="Calendar" tamil="நாட்காட்டி" /></Link>}
       />
+
       <Surface className="p-5 sm:p-8">
         <div className="mb-7 flex items-center justify-between gap-4">
           <div>
@@ -455,7 +489,7 @@ export function SetupScreen() {
             : <span />}
           {step < setupStepCount - 1
             ? <button type="button" onClick={() => goToStep(step + 1)} className="primary-action"><UiText english="Continue" tamil="தொடரவும்" /> <ChevronRight className="size-4" /></button>
-            : <button type="button" onClick={finish} className="primary-action"><Check className="size-4" /><UiText english={existing && !isNewFunction ? 'Save changes' : 'Save & Start Collection'} tamil={existing && !isNewFunction ? 'மாற்றங்களைச் சேமி' : 'சேமித்து சேகரிப்பைத் தொடங்கு'} /> <ArrowRight className="size-4" /></button>}
+            : <button type="button" onClick={finish} disabled={saving} className="primary-action"><Check className="size-4" /><UiText english={saving ? 'Saving…' : existing && !isNewFunction ? 'Save changes' : 'Save & Start Collection'} tamil={saving ? 'சேமிக்கிறது…' : existing && !isNewFunction ? 'மாற்றங்களைச் சேமி' : 'சேமித்து சேகரிப்பைத் தொடங்கு'} /> <ArrowRight className="size-4" /></button>}
         </div>
         {notice && <p role="status" className="mt-3 text-center text-sm text-primary">{notice}</p>}
       </Surface>

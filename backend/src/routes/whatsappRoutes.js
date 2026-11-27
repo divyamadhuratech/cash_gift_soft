@@ -5,6 +5,7 @@ import {
   isWhatsAppReady,
   getWhatsAppStatus,
   getQrDataUrl,
+  resetWhatsApp,
 } from "../services/whatsapp.js";
 
 const router = Router();
@@ -21,6 +22,20 @@ router.get("/whatsapp/status", async (req, res) => {
     res.json({ ready, hasQr, qrDataUrl });
   } catch (error) {
     res.status(500).json({ message: error?.message || "Failed to get WhatsApp status" });
+  }
+});
+
+/**
+ * POST /api/whatsapp/reset
+ * Disconnects the current session, wipes stored credentials, and re-initialises
+ * so a fresh QR code is generated. Used by the "Disconnect" button.
+ */
+router.post("/whatsapp/reset", async (req, res) => {
+  try {
+    await resetWhatsApp();
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ message: error?.message || "Failed to reset WhatsApp connection" });
   }
 });
 

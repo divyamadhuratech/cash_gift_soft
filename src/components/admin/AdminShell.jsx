@@ -1,6 +1,8 @@
 import { Link, useLocation } from "react-router-dom"
-import { useCeremony, localized, logoWord, appTagline } from "@/components/ceremony-provider"
-import { useAuth } from "@/contexts/AuthContext"
+import { useCeremony } from "@/contexts/ceremony-context"
+import { localized } from "@/lib/ceremony-format"
+import { logoWord, appTagline } from "@/constants/ceremony-catalog"
+import { useAuth } from "@/contexts/useAuth"
 import { cn } from "@/lib/utils"
 import { LogOut, Moon, Sun, ShieldCheck } from "lucide-react"
 

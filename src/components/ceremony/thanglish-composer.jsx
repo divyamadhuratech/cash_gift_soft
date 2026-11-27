@@ -29,14 +29,18 @@ export function ThanglishComposer({ id, sourceLabel = 'Thanglish (English)', tar
     const text = source.trim()
     if (!text) {
       token.current += 1
-      setTarget('')
-      setWord('')
-      setChips([])
-      setStatus('idle')
-      setConverting(false)
+      queueMicrotask(() => {
+        setTarget('')
+        setWord('')
+        setChips([])
+        setStatus('idle')
+        setConverting(false)
+      })
       return
     }
-    setConverting(true)
+    // Deferred a microtask so the spinner state isn't set synchronously
+    // inside the effect — same visible timing.
+    queueMicrotask(() => setConverting(true))
     timer.current = window.setTimeout(async () => {
       const current = ++token.current
       const abort = new AbortController()

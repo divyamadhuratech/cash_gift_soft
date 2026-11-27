@@ -31,6 +31,7 @@ export const tokenStorage = {
       return null;
     }
   },
+
   set: (token) => {
     try {
       if (token) localStorage.setItem(TOKEN_KEY, token);
@@ -39,6 +40,7 @@ export const tokenStorage = {
       // ignore
     }
   },
+
   clear: () => {
     try {
       localStorage.removeItem(TOKEN_KEY);
@@ -58,6 +60,7 @@ export const userStorage = {
       return null;
     }
   },
+
   set: (user) => {
     try {
       if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
@@ -66,6 +69,7 @@ export const userStorage = {
       // ignore
     }
   },
+  
   clear: () => {
     try {
       localStorage.removeItem(USER_KEY);

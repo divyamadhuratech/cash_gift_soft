@@ -1,5 +1,5 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
-import { useAuth } from '@/contexts/AuthContext'
+import { useAuth } from '@/contexts/useAuth'
 
 // Redirect to /login if not authenticated. Renders nothing while loading.
 export function RequireAuth() {
@@ -16,7 +16,6 @@ export function RequireAuth() {
       </div>
     )
   }
-
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />
   }

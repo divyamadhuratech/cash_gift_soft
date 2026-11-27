@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { ArrowRight, CirclePlus, Clock3, Gift, MessageCircle, RefreshCw, Sparkles, Undo2, Wifi, WifiOff } from 'lucide-react'
+import { ArrowRight, CirclePlus, Clock3, Gift, LogOut, MessageCircle, RefreshCw, Sparkles, Undo2, Wifi, WifiOff } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { AppShell, PageHeading, PaymentBadge, PillToggle, SectionTitle, Surface, UiText } from '@/components/ceremony/shared'
 import { ThanglishComposer } from '@/components/ceremony/thanglish-composer'
 import { EntryFieldInput } from '@/components/ceremony/entry-field-input'
-import { useCeremony, localized, collectionFormDescription, collectionFormTitle, collectionPlaceholder, defaultCollectionMode, defaultEntryFields, formatRupees, paymentDetailFields, paymentReferenceText, syncNotice, totalFor } from '@/components/ceremony-provider'
+import { useCeremony } from '@/contexts/ceremony-context'
+import { localized, formatRupees, paymentDetailFields, totalFor } from '@/lib/ceremony-format'
+import { collectionFormDescription, collectionFormTitle, collectionPlaceholder, defaultCollectionMode, defaultEntryFields, syncNotice } from '@/constants/ceremony-catalog'
 import { paymentModes } from '@/components/ceremony/types'
 import { conversionFlow, convertTamilWord, tamilModeLabel, tamilValidationExamples } from '@/lib/tamil-transliteration'
 import { whatsappApi } from '@/lib/ceremony-api'
@@ -24,7 +26,10 @@ export function CollectionScreen() {
   const draftHydrated = useRef(false)
   const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
-  const [mode, setMode] = useState(defaultCollectionMode)
+  const [mode, setMode] = useState(() => {
+    const savedMode = window.localStorage.getItem(modeStorageKey)
+    return paymentModes.includes(savedMode) ? savedMode : defaultCollectionMode
+  })
   const [city, setCity] = useState('')
   const [relation, setRelation] = useState('')
   const [giftType, setGiftType] = useState('')
@@ -33,24 +38,19 @@ export function CollectionScreen() {
   const [language, setLanguage] = useState('English')
   const [nameInputMode, setNameInputMode] = useState('English')
   const [cityInputMode, setCityInputMode] = useState('English')
-  const [moreDetails, setMoreDetails] = useState(false)
-  const [fastMode, setFastMode] = useState(false)
+  const [fastMode, setFastMode] = useState(() => window.localStorage.getItem(fastModeStorageKey) === 'true')
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
   const [whatsappNumber, setWhatsappNumber] = useState('')
   const [draftNotice, setDraftNotice] = useState('')
+  const [note, setNote] = useState('')
   // WhatsApp connection state
   const [waStatus, setWaStatus] = useState({ ready: false, hasQr: false, qrDataUrl: null })
   const [waStatusLoading, setWaStatusLoading] = useState(false)
   const [waSending, setWaSending] = useState(false)
+  const [waResetting, setWaResetting] = useState(false)
   const waPollerRef = useRef(null)
   const parsedAmount = Number(amount.replace(/[^\d.]/g, '')) || 0
-
-  useEffect(() => {
-    const savedMode = window.localStorage.getItem(modeStorageKey)
-    if (paymentModes.includes(savedMode)) setMode(savedMode)
-    setFastMode(window.localStorage.getItem(fastModeStorageKey) === 'true')
-  }, [])
 
   useEffect(() => {
     if (editingEntry || !draftEntry || draftHydrated.current) return
@@ -74,16 +74,17 @@ export function CollectionScreen() {
 
   useEffect(() => {
     if (!editingEntry) return
-    setName(editingEntry.name)
-    setAmount(String(editingEntry.amount))
-    setMode(editingEntry.mode)
-    setCity(editingEntry.city ?? '')
-    setRelation(editingEntry.relation ?? '')
-    setGiftType(editingEntry.giftType ?? '')
-    setCustomValues(editingEntry.custom ?? {})
-    setPaymentDetails(editingEntry.paymentDetails ?? {})
-    setMoreDetails(true)
-    setSelectedEntry(editingEntry)
+    queueMicrotask(() => {
+      setName(editingEntry.name)
+      setAmount(String(editingEntry.amount))
+      setMode(editingEntry.mode)
+      setCity(editingEntry.city ?? '')
+      setRelation(editingEntry.relation ?? '')
+      setGiftType(editingEntry.giftType ?? '')
+      setCustomValues(editingEntry.custom ?? {})
+      setPaymentDetails(editingEntry.paymentDetails ?? {})
+      setSelectedEntry(editingEntry)
+    })
   }, [editingEntry, setSelectedEntry])
 
   // Poll WhatsApp status every 5 s while not ready (to refresh QR / detect connect)
@@ -96,20 +97,40 @@ export function CollectionScreen() {
     }
   }, [])
 
+  const resetWaConnection = useCallback(async () => {
+    setWaResetting(true)
+    try {
+      await whatsappApi.reset()
+      setToast('WhatsApp disconnected — scanning for new QR…')
+      window.setTimeout(() => setToast(''), 3200)
+    } catch {
+      setToast('Failed to disconnect WhatsApp')
+      window.setTimeout(() => setToast(''), 3200)
+    } finally {
+      setWaResetting(false)
+    }
+    await fetchWaStatus()
+    // Re-start the poller in case it was stopped while connected
+    if (waPollerRef.current) window.clearInterval(waPollerRef.current)
+    waPollerRef.current = window.setInterval(fetchWaStatus, 5000)
+  }, [fetchWaStatus])
+
   useEffect(() => {
-    fetchWaStatus()
-    waPollerRef.current = window.setInterval(() => {
-      // Stop polling once connected — saves requests during a live event
-      setWaStatus((current) => {
-        if (current.ready) {
-          window.clearInterval(waPollerRef.current)
-        }
-        return current
-      })
-      fetchWaStatus()
-    }, 5000)
+    queueMicrotask(fetchWaStatus)
+    waPollerRef.current = window.setInterval(fetchWaStatus, 5000)
     return () => window.clearInterval(waPollerRef.current)
   }, [fetchWaStatus])
+
+  // Stop polling once connected — saves requests during a live event.
+  // If the connection drops, the send-receipt catch re-fetches status
+  // and the user can also tap "Disconnect" to force a new QR.
+  useEffect(() => {
+    if (!waStatus.ready) return
+    if (waPollerRef.current) {
+      window.clearInterval(waPollerRef.current)
+      waPollerRef.current = null
+    }
+  }, [waStatus.ready])
 
   function changeMode(nextMode) {
     setMode(nextMode)
@@ -145,7 +166,6 @@ export function CollectionScreen() {
     setPaymentDetails({})
     setWhatsappNumber('')
     setError('')
-    setMoreDetails(false)
     setDraftNotice('Draft held — inputs cleared. Continue later or clear the draft.')
     nameRef.current?.focus()
   }
@@ -247,6 +267,9 @@ if (whatsappNumber.trim()) {
       .catch(() => {
         setToast('WhatsApp receipt failed to send')
         window.setTimeout(() => setToast(''), 3200)
+        // The connection may have dropped while polling was stopped —
+        // re-fetch status so the UI reflects reality (and a new QR if needed).
+        fetchWaStatus()
       })
       .finally(() => setWaSending(false))
   }
@@ -281,16 +304,47 @@ return <AppShell>
               <div className="mt-3 flex flex-wrap gap-2">{[100, 500, 1000, 5000].map((value) => <button key={value} type="button" className="quick-amount" onClick={() => setAmount(String(parsedAmount + value))}>+{value.toLocaleString('en-IN')}</button>)}<button type="button" className="quick-amount" onClick={() => setAmount(String(parsedAmount + 1))}>+1</button></div>
               <div className="mt-3 flex items-center justify-between gap-3"><p className="text-xs text-muted-foreground">{localized(uiLanguage, 'Enter the exact gift amount in rupees.', 'பரிசுத் தொகையை ரூபாயில் சரியாக உள்ளிடவும்.')}</p><p className="text-sm font-semibold text-primary">Current gift: {formatRupees(parsedAmount)}</p></div>
             </div>
+<fieldset>
+  <legend className="form-label">
+    <UiText english="Payment mode" tamil="பணம் செலுத்தும் முறை" />
+  </legend>
+  <div className="choice-grid">
+    {paymentModes.map((item) => (
+      <button
+        key={item}
+        type="button"
+        onClick={() => changeMode(item)}
+        aria-pressed={mode === item}
+        className={`choice-button ${mode === item ? 'choice-button-active' : ''}`}
+      >
+        <span className={`payment-dot payment-${item.toLowerCase()}`} />
+        {localized(uiLanguage, item, modeTamil[item])}
+      </button>
+    ))}
+  </div>
 
-            <fieldset>
-              <legend className="form-label"><UiText english="Payment mode" tamil="பணம் செலுத்தும் முறை" /></legend>
-              <div className="choice-grid">{paymentModes.map((item) => <button key={item} type="button" onClick={() => changeMode(item)} aria-pressed={mode === item} className={`choice-button ${mode === item ? 'choice-button-active' : ''}`}><span className={`payment-dot payment-${item.toLowerCase()}`} />{localized(uiLanguage, item, modeTamil[item])}</button>)}</div>
-              {paymentDetailFields(mode).length > 0 && <div className="mt-4 rounded-2xl border border-border bg-secondary/30 p-4">
-                <p className="mb-3 text-xs font-semibold uppercase tracking-[.12em] text-muted-foreground">{localized(uiLanguage, `Enter the ${mode} details manually`, `${modeTamil[mode]} விவரங்களைக் கைமுறையாக உள்ளிடவும்`)}</p>
-                <div className="grid gap-3 sm:grid-cols-2">{paymentDetailFields(mode).map((field) => <label key={field.key} className="block"><span className="form-label">{uiLanguage === 'Tamil' && field.tamil ? field.tamil : field.label}</span><input className="form-input" value={paymentDetails[field.key] ?? ''} maxLength={field.maxLength} inputMode={field.key === 'cardLast4' ? 'numeric' : field.key.startsWith('upi') ? 'email' : 'text'} placeholder={field.placeholder} onChange={(event) => setPaymentDetails((current) => ({ ...current, [field.key]: event.target.value }))} /></label>)}</div>
-                {paymentReferenceText(mode, paymentDetails) && <p className="mt-3 text-xs text-muted-foreground"><span className="font-semibold"><UiText english="Saved as" tamil="சேமிக்கப்படுகிறது" />: </span>{paymentReferenceText(mode, paymentDetails)}</p>}
-              </div>}
-            </fieldset>
+  {mode === 'Other' && (
+    <div className="mt-4 rounded-2xl border border-border bg-secondary/30 p-4">
+      <label className="block">
+        <span className="form-label">
+          <UiText english="Note" tamil="குறிப்பு" />{' '}
+          <span className="font-normal text-muted-foreground">(optional)</span>
+        </span>
+        <input
+          className="form-input"
+          value={note}
+          maxLength={120}
+          placeholder={localized(
+            uiLanguage,
+            'e.g. Gold coin, silver vessel',
+            'எ.கா. தங்கக் காசு, வெள்ளிப் பாத்திரம்'
+          )}
+          onChange={(event) => setNote(event.target.value)}
+        />
+      </label>
+    </div>
+  )}
+</fieldset>
 
             {!fastMode && <details className="rounded-xl border border-border/70 bg-muted/30 px-4 py-3"><summary className="cursor-pointer text-xs font-semibold text-muted-foreground">Tamil conversion checks</summary><div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-5">{tamilValidationExamples.map((word) => <span key={word}><b>{word}</b> → {convertTamilWord(word).text}</span>)}</div><p className="mt-3 text-xs text-muted-foreground">Flow for <b>pooja</b>: exact dictionary → {conversionFlow('pooja')} → பூஜா. Tap a suggestion chip to remember the spelling for that word.</p></details>}
 
@@ -303,9 +357,16 @@ return <AppShell>
             <div className="rounded-2xl border border-border bg-secondary/30 p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[.12em] text-muted-foreground"><MessageCircle className="size-3.5" />WhatsApp receipt</p>
-                <span className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ${waStatus.ready ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                  {waStatus.ready ? <><Wifi className="size-3" />Connected</> : <><WifiOff className="size-3" />Not connected</>}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ${waStatus.ready ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                    {waStatus.ready ? <><Wifi className="size-3" />Connected</> : <><WifiOff className="size-3" />Not connected</>}
+                  </span>
+                  {waStatus.ready && (
+                    <button type="button" onClick={resetWaConnection} disabled={waResetting} className="flex items-center gap-1 rounded-full border border-destructive/30 bg-destructive/5 px-2.5 py-1 text-[10px] font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-50">
+                      <LogOut className="size-3" />{waResetting ? 'Disconnecting…' : 'Disconnect'}
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* QR panel — only while waiting to connect */}
@@ -321,7 +382,7 @@ return <AppShell>
 
               {!waStatus.ready && !waStatus.qrDataUrl && (
                 <p className="mb-3 text-xs text-muted-foreground">
-                  Start the backend server — a QR code will appear here once WhatsApp Web initialises.
+                  Waiting for a QR code — the connection is initialising, please wait…
                 </p>
               )}
 

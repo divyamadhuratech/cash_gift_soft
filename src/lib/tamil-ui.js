@@ -185,6 +185,23 @@ const tamil = {
   'Tamil': 'தமிழ்',
   'Both': 'இரண்டும்',
 
+  // Function / occasion types
+  'Wedding': 'திருமணம்',
+  'Engagement': 'நிச்சயதார்த்தம்',
+  'Ear Piercing': 'காது குத்து விழா',
+  'Naming Ceremony': 'பெயர் சூட்டு விழா',
+  'Baby Shower': 'வளைகாப்பு',
+  'Puberty Ceremony': 'மஞ்சள் நீராட்டு விழா',
+  'Birthday': 'பிறந்தநாள்',
+  'Housewarming': 'புதுமனை புகு விழா',
+  'Temple': 'கோவில் விழா',
+  'Anniversary': 'ஆண்டு விழா',
+  'Memorial': 'நினைவு விழா',
+  'Custom': 'தனிப்பயன்',
+  'Other — type manually': 'மற்றவை — கைமுறையாக உள்ளிடவும்',
+  'Enter the function type': 'நிகழ்ச்சி வகையை உள்ளிடவும்',
+  'Function type': 'நிகழ்ச்சி வகை',
+
   // Misc
   'Yes': 'ஆம்',
   'No': 'இல்லை',

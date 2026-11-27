@@ -4,7 +4,8 @@ import { Link, Navigate, useSearchParams } from 'react-router-dom'
 import { AppShell, PageHeading, Surface, UiText } from '@/components/ceremony/shared'
 import { ReceiptDesigner } from '@/components/ceremony/receipt-designer'
 import { templateById } from '@/lib/design-templates'
-import { useCeremony, normalizeReceiptDesign, defaultReceiptDesign } from '@/components/ceremony-provider'
+import { useCeremony } from '@/contexts/ceremony-context'
+import { normalizeReceiptDesign, defaultReceiptDesign } from '@/lib/receipt-design'
 
 /** Falls back to the Classic template the first time a function is designed. */
 function withElements(design) {
@@ -43,22 +44,28 @@ export function DesignerScreen() {
 
   useEffect(() => {
     let alive = true
-    if (!targetRecord || targetRecord.id === activeFunctionId) {
-      setSwitchState('idle')
-      return () => { alive = false }
-    }
-    setSwitchState('pending')
-    startCollection(targetRecord.id).then((result) => {
+    queueMicrotask(() => {
       if (!alive) return
-      setSwitchState(result.ok ? 'idle' : 'blocked')
-      setSwitchNotice(result.ok ? '' : (result.error ?? 'Could not open that collection.'))
+      if (!targetRecord || targetRecord.id === activeFunctionId) {
+        setSwitchState('idle')
+        return
+      }
+      setSwitchState('pending')
+      startCollection(targetRecord.id).then((result) => {
+        if (!alive) return
+        setSwitchState(result.ok ? 'idle' : 'blocked')
+        setSwitchNotice(result.ok ? '' : (result.error ?? 'Could not open that collection.'))
+      })
     })
     return () => { alive = false }
   }, [targetRecord, activeFunctionId, startCollection])
 
-  useEffect(() => {
+  /** Re-seed the canvas when the saved design changes, without an effect. */
+  const [lastDesignSource, setLastDesignSource] = useState(receiptDesign)
+  if (receiptDesign !== lastDesignSource) {
+    setLastDesignSource(receiptDesign)
     setDesign(withElements(receiptDesign))
-  }, [receiptDesign])
+  }
 
   const entry = useMemo(() => selectedEntry ?? entries[0] ?? null, [selectedEntry, entries])
 

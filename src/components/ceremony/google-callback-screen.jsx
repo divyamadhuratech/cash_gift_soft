@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Loader2, TriangleAlert } from 'lucide-react'
 import { LogoLockup } from '@/components/ceremony/shared'
-import { useAuth } from '@/contexts/AuthContext'
+import { useAuth } from '@/contexts/useAuth'
 
 /**
  * Where Google sends the browser back to (FRONTEND_URL/auth/callback).
@@ -14,7 +14,15 @@ import { useAuth } from '@/contexts/AuthContext'
 export function GoogleCallbackScreen() {
   const navigate = useNavigate()
   const { completeGoogleLogin } = useAuth()
-  const [message, setMessage] = useState('')
+  // The URL is read once during the initial render, so a missing token or an
+  // error parameter shows its message without a synchronous effect setState.
+  const [message, setMessage] = useState(() => {
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+    const failure = params.get('error')
+    if (failure) return failure
+    if (!params.get('token')) return 'Google did not return a sign-in result. Please try again.'
+    return ''
+  })
   const started = useRef(false)
 
   useEffect(() => {
@@ -27,14 +35,7 @@ export function GoogleCallbackScreen() {
     const failure = params.get('error')
     window.history.replaceState(null, '', window.location.pathname)
 
-    if (failure) {
-      setMessage(failure)
-      return
-    }
-    if (!token) {
-      setMessage('Google did not return a sign-in result. Please try again.')
-      return
-    }
+    if (failure || !token) return
 
     completeGoogleLogin(token).then((result) => {
       if (result.success) navigate('/', { replace: true })

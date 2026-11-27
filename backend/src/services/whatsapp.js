@@ -12,13 +12,16 @@
 import baileys from "@whiskeysockets/baileys";
 const {
   makeWASocket,
-  useMultiFileAuthState,
+  // Baileys' factory just happens to share the "use" prefix with React hooks —
+  // alias it so the hook rules don't mistake it for one.
+  useMultiFileAuthState: createAuthState,
   DisconnectReason,
   makeCacheableSignalKeyStore,
   fetchLatestBaileysVersion,
 } = baileys;
 import { Boom } from "@hapi/boom";
 import QRCode from "qrcode";
+import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -30,6 +33,8 @@ let sock = null;
 let ready = false;
 /** Latest raw QR string — set on each "qr" credential update, cleared on connect. */
 let pendingQr = null;
+/** Guard so rapid close events can't spawn multiple overlapping reconnect timers. */
+let reconnectTimer = null;
 
 /** Returns the current WhatsApp connection state for API consumers. */
 export function getWhatsAppStatus() {
@@ -46,10 +51,35 @@ export async function getQrDataUrl() {
   return QRCode.toDataURL(pendingQr, { width: 256, margin: 2 });
 }
 
+/** Recursively removes the auth directory so Baileys starts a fresh registration. */
+async function wipeAuthDir() {
+  await fs.promises.rm(AUTH_DIR, { recursive: true, force: true });
+}
+
+/**
+ * Disconnects the current socket, clears all credentials, and re-initialises
+ * so a brand-new QR code is generated. Call this from the "Disconnect" button.
+ */
+export async function resetWhatsApp() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  const current = sock;
+  sock = null;
+  ready = false;
+  pendingQr = null;
+  if (current) {
+    try { current.end(undefined); } catch { /* socket already closed */ }
+  }
+  await wipeAuthDir();
+  await initWhatsApp();
+}
+
 export async function initWhatsApp() {
   if (sock) return sock;
 
-  const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+  const { state, saveCreds } = await createAuthState(AUTH_DIR);
   const { version } = await fetchLatestBaileysVersion();
 
   sock = makeWASocket({
@@ -67,7 +97,7 @@ export async function initWhatsApp() {
   // Persist credentials whenever they change (QR scan, key rotation, etc.)
   sock.ev.on("creds.update", saveCreds);
 
-  sock.ev.on("connection.update", (update) => {
+  sock.ev.on("connection.update", async (update) => {
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
@@ -83,24 +113,37 @@ export async function initWhatsApp() {
 
     if (connection === "close") {
       ready = false;
+      pendingQr = null;
       const statusCode = (lastDisconnect?.error instanceof Boom)
         ? lastDisconnect.error.output.statusCode
         : 0;
-      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+
+      // Fatal codes mean the saved session can never work again — wiping the
+      // auth directory makes Baileys fall back to the registration flow so a
+      // fresh QR is generated automatically.
+      const fatalCodes = new Set([
+        DisconnectReason.loggedOut,
+        DisconnectReason.badSession,
+        DisconnectReason.forbidden,
+        DisconnectReason.multideviceMismatch,
+      ]);
+      const isFatal = fatalCodes.has(statusCode);
 
       console.log(
         `WhatsApp connection closed (code ${statusCode}).`,
-        shouldReconnect ? "Reconnecting…" : "Logged out — delete wa_auth_info/ and restart to re-link.",
+        isFatal ? "Session invalid — resetting and generating a new QR…" : "Reconnecting…",
       );
 
-      if (shouldReconnect) {
-        // Reset so initWhatsApp() creates a fresh socket on next call
-        sock = null;
-        // Delay slightly to avoid hammering the server on rapid disconnects
-        setTimeout(() => initWhatsApp(), 3000);
-      } else {
-        sock = null;
+      if (isFatal) {
+        await wipeAuthDir();
       }
+      sock = null;
+      // Clear any pending reconnect timer before scheduling a new one.
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        initWhatsApp();
+      }, isFatal ? 5000 : 3000);
     }
   });
 

@@ -30,11 +30,11 @@ const functionSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
     tamil: { type: String, trim: true, default: "" },
-    type: {
-      type: String,
-      enum: ["Wedding", "Engagement", "Birthday", "Housewarming", "Temple", "Anniversary", "Custom"],
-      default: "Custom",
-    },
+    /**
+     * Free-form so the setup wizard can offer a preset list and still accept a
+     * manually typed occasion (e.g. "Ear Piercing") without a schema change.
+     */
+    type: { type: String, trim: true, default: "Custom", maxlength: 60 },
     category: {
       type: String,
       enum: ["Family celebration", "Religious function", "Community event", "Other"],

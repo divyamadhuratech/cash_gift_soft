@@ -46,8 +46,26 @@ npm run lint           # oxlint
 npm run test:backend   # backend unit tests
 ```
 
-Backend-only: `cd backend && npm test` (unit) and
-`npm run test:integration` (needs a running server on :3005 + MongoDB).
+Backend-only: `cd backend && npm test` (unit), `npm run test:auth` (isolated
+registration/admin test) and `npm run test:integration` (needs a running server
+on :3005 + MongoDB).
+
+## Admin bootstrap
+
+Public registration always creates a `user` account and rejects any explicit
+`role` field with **400**. Admin accounts are created or promoted only through
+the operator CLI:
+
+```sh
+cd backend
+npm run create-admin -- --email owner@example.com
+npm run create-admin -- --email owner@example.com --promote
+```
+
+The new-account form reads the password from `ADMIN_BOOTSTRAP_PASSWORD` or a
+hidden prompt; it is never taken from the command line or logged. The CLI
+refuses to create a second new admin unless `--force` is passed. `--promote`
+grants admin to an existing account without changing its password.
 
 ## Routes (frontend)
 

@@ -31,7 +31,7 @@ const publicUser = (user) => ({
 });
 
 /** Every new account gets its own tenant workspace. */
-const provisionAccount = async ({ email, displayName, password, role, provider, googleId, picture }) => {
+export const provisionAccount = async ({ email, displayName, password, role, provider, googleId, picture }) => {
   const workspace = await Workspace.create({
     name: displayName ? `${displayName}'s workspace` : `${email}'s workspace`,
     slug: workspaceSlugFor(email),
@@ -56,7 +56,7 @@ const provisionAccount = async ({ email, displayName, password, role, provider, 
 
 export const register = async (req, res) => {
   try {
-    const { email, password, displayName, role: requestedRole } = req.validated;
+    const { email, password, displayName } = req.validated;
 
     const existing = await User.findOne({ email });
     if (existing) {
@@ -64,15 +64,12 @@ export const register = async (req, res) => {
     }
 
     /**
-     * The admin area must never be openable by an arbitrary self-registered
-     * account, so "admin" is only ever granted to the very first account that
-     * asks for it. After that, admin is a database-side decision.
+     * Public sign-up can only ever create a normal user. Admin accounts are
+     * provisioned or promoted through the trusted operator CLI
+     * (backend/scripts/create-admin.mjs), never through this HTTP route.
      */
-    const adminTaken = requestedRole === "admin" && (await User.exists({ role: "admin" }));
-    const role = adminTaken ? "user" : requestedRole;
-
     const hashed = await bcrypt.hash(password, 10);
-    const user = await provisionAccount({ email, displayName, password: hashed, role, provider: "local" });
+    const user = await provisionAccount({ email, displayName, password: hashed, role: "user", provider: "local" });
 
     const token = signToken({ userId: user._id, email: user.email, role: user.role });
 

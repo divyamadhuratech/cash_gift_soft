@@ -2,7 +2,9 @@ import { useState } from 'react'
 import { ArrowLeft, CheckCircle2, Printer, Sparkles } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { AppShell, PageHeading, PillToggle, ReceiptPaper, Surface, UiText } from '@/components/ceremony/shared'
-import { useCeremony, localized, backToCollectionLabel, formatRupees, printAgainLabel, printButtonLabel, receiptPreviewLabel, receiptSizeLabel, successEntryCopy } from '@/components/ceremony-provider'
+import { useCeremony } from '@/contexts/ceremony-context'
+import { localized, formatRupees } from '@/lib/ceremony-format'
+import { backToCollectionLabel, printAgainLabel, printButtonLabel, receiptPreviewLabel, receiptSizeLabel, successEntryCopy } from '@/constants/ceremony-catalog'
 
 export function ReceiptScreen() {
   const { selectedEntry, functionDetails, receiptDesign, uiLanguage } = useCeremony()

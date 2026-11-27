@@ -1,12 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowRight, Eye, EyeOff, LockKeyhole, Sparkles, UserRound } from 'lucide-react'
 import { LogoLockup } from '@/components/ceremony/shared'
-import { useAuth } from '@/contexts/AuthContext'
+import { useAuth } from '@/contexts/useAuth'
 
 export function RegisterScreen() {
   const navigate = useNavigate()
-  const { register, error, isAuthenticated } = useAuth()
+  const { register, error, setError, isAuthenticated } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -14,6 +14,9 @@ export function RegisterScreen() {
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [localMessage, setLocalMessage] = useState('')
+
+  // Clear any stale error left by another auth screen (login/register share it)
+  useEffect(() => { setError('') }, [setError])
 
   async function onSubmit(event) {
     event.preventDefault()
@@ -53,8 +56,8 @@ export function RegisterScreen() {
       <div className="mt-9 text-center"><span className="login-kicker"><Sparkles className="size-3.5" />YOUR CELEBRATION DESK</span><h1 className="mt-4 text-3xl font-semibold tracking-tight">Create your account</h1><p className="mt-2 text-sm text-muted-foreground">Set up your private collection workspace.</p><p className="tamil-font mt-2 text-sm text-primary">உங்கள் சேகரிப்பு இடத்தை உருவாக்குங்கள்</p></div>
       <form onSubmit={onSubmit} className="mt-8 flex flex-col gap-5">
         <label className="login-field"><span className="mb-2 block text-sm font-semibold">Name</span><span className="login-input-wrap"><UserRound className="size-[18px] text-muted-foreground" /><input value={displayName} onChange={(event) => setDisplayName(event.target.value)} autoComplete="name" placeholder="Ananth" /></span></label>
-        <label className="login-field"><span className="mb-2 block text-sm font-semibold">Email</span><span className="login-input-wrap"><UserRound className="size-[18px] text-muted-foreground" /><input value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" placeholder="Alex@example.com" required /></span></label>
-        <label className="login-field"><span className="mb-2 block text-sm font-semibold">Password</span><span className="login-input-wrap"><LockKeyhole className="size-[18px] text-muted-foreground" /><input value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" placeholder="Min 6 characters" type={showPassword ? 'text' : 'password'} required /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword((current) => !current)} className="flex size-[52px] shrink-0 items-center justify-center text-muted-foreground">{showPassword ? <EyeOff className="size-[18px]" /> : <Eye className="size-[18px]" />}</button></span></label>
+        <label className="login-field"><span className="mb-2 block text-sm font-semibold">Email</span><span className="login-input-wrap"><UserRound className="size-[18px] text-muted-foreground" /><input value={email} onChange={(event) => { setEmail(event.target.value); setLocalMessage('') }} autoComplete="email" placeholder="Alex@example.com" required /></span></label>
+        <label className="login-field"><span className="mb-2 block text-sm font-semibold">Password</span><span className="login-input-wrap"><LockKeyhole className="size-[18px] text-muted-foreground" /><input value={password} onChange={(event) => { setPassword(event.target.value); setLocalMessage('') }} autoComplete="new-password" placeholder="Min 6 characters" type={showPassword ? 'text' : 'password'} required /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword((current) => !current)} className="flex size-[52px] shrink-0 items-center justify-center text-muted-foreground">{showPassword ? <EyeOff className="size-[18px]" /> : <Eye className="size-[18px]" />}</button></span></label>
         <label className="login-field"><span className="mb-2 block text-sm font-semibold">Confirm Password</span><span className="login-input-wrap"><LockKeyhole className="size-[18px] text-muted-foreground" /><input value={confirm} onChange={(event) => setConfirm(event.target.value)} autoComplete="new-password" placeholder="Repeat password" type={showPassword ? 'text' : 'password'} required /></span></label>
         {message && <p role="alert" className="text-sm text-destructive">{message}</p>}
         <button type="submit" disabled={submitting} className="login-submit">{submitting ? 'Creating...' : 'Create Account'} <span className="tamil-font">· கணக்கை உருவாக்கு</span><ArrowRight className="ml-auto size-4" /></button>

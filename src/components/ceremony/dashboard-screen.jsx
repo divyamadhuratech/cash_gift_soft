@@ -2,8 +2,11 @@
 import { ArrowRight, ArrowUpRight, CalendarDays, Check, CirclePlus, Gift, Printer, Sparkles, Wallet, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { AppShell, StatusBadge, Surface, UiText } from '@/components/ceremony/shared'
-import { useCeremony, localized, formatRupees, paymentTotals, todayDate, todayISO, totalFor } from '@/components/ceremony-provider'
-import { useAuth } from '@/contexts/AuthContext'
+import { useCeremony } from '@/contexts/ceremony-context'
+import { localized, formatRupees, paymentTotals, todayISO, totalFor } from '@/lib/ceremony-format'
+import { translateFunctionType } from '@/lib/function-types'
+import { todayDate } from '@/constants/ceremony-catalog'
+import { useAuth } from '@/contexts/useAuth'
 import { useDashboard } from '@/hooks/useDashboard'
 import { paymentModes } from '@/components/ceremony/types'
 import { cn } from '@/lib/utils'
@@ -11,14 +14,12 @@ import dashboardBackground from '@/images/dashboard.webp'
 import cardBackground from '@/images/image.webp'
 const modeTamil = { Cash: 'ரொக்கம்', UPI: 'யூபிஐ', Card: 'அட்டை', Other: 'மற்றவை' }
 
-const occasionTamil = { Wedding: 'திருமணம்', Engagement: 'நிச்சயதார்த்தம்', Birthday: 'பிறந்தநாள்', Housewarming: 'புதுமனை புகுவிழா', Temple: 'கோவில் விழா', Anniversary: 'ஆண்டு விழா', Custom: 'தனிப்பயன்' }
-
 export function DashboardScreen() {
   const { entries, functionDetails, scheduledFunctions, archivedFunctions, closeCollection, uiLanguage, status, error, refresh } = useCeremony()
   const { user } = useAuth()
   const { data: dashboard, loading: dashLoading, error: dashError } = useDashboard()
   const [showCloseSummary, setShowCloseSummary] = useState(false)
-  const [showCreatePrompt, setShowCreatePrompt] = useState(false)
+  const [createPromptDismissed, setCreatePromptDismissed] = useState(false)
   const collectionClosed = archivedFunctions.some((item) => item.id === functionDetails?.id)
   const totals = paymentTotals(entries)
   const total = totalFor(entries)
@@ -29,18 +30,17 @@ export function DashboardScreen() {
   const upcoming = scheduledFunctions.filter((item) => item.date >= todayISO())
   const displayName = (user?.displayName || user?.email || '').split('@')[0]
 
-  useEffect(() => {
-    // Only nag once the first load has finished, otherwise every new account
-    // sees the create prompt flash before the request resolves.
-    if (status === 'ready' && !hasFunctionToday) setShowCreatePrompt(true)
-  }, [status, hasFunctionToday])
+  // Only nag once the first load has finished, otherwise every new account
+  // sees the create prompt flash before the request resolves. Derived during
+  // render; once dismissed it stays hidden for the session.
+  const showCreatePrompt = status === 'ready' && !hasFunctionToday && !createPromptDismissed
 
   useEffect(() => {
     if (!showCloseSummary && !showCreatePrompt) return
     const onKeyDown = (event) => {
       if (event.key === 'Escape') {
         setShowCloseSummary(false)
-        setShowCreatePrompt(false)
+        setCreatePromptDismissed(true)
       }
     }
     window.addEventListener('keydown', onKeyDown)
@@ -65,8 +65,8 @@ export function DashboardScreen() {
             </div>
             <div className="hero-event-card hero-event-card-compact">
               <div className="flex items-center justify-between gap-3"><span className="eyebrow text-[#e4c879]">{localized(uiLanguage, "TODAY'S FUNCTION", 'இன்றைய நிகழ்ச்சி')}</span><StatusBadge status={collectionClosed ? 'Completed' : 'Active'} /></div>
-              <h2 className="mt-2 truncate text-base font-semibold">{functionDetails.name}</h2>
-              <p className={cn('mt-0.5 truncate text-xs text-white/65', uiLanguage === 'Tamil' && 'tamil-font')}>{uiLanguage === 'Tamil' && functionDetails.tamil ? functionDetails.tamil : localized(uiLanguage, functionDetails.type, occasionTamil[functionDetails.type] ?? functionDetails.type)} <span className="mx-1">·</span>{functionDetails.venue}</p>
+              <h2 className={cn('mt-2 truncate text-base font-semibold', uiLanguage === 'Tamil' && functionDetails.tamil && 'tamil-font')}>{uiLanguage === 'Tamil' && functionDetails.tamil ? functionDetails.tamil : functionDetails.name}</h2>
+              <p className={cn('mt-0.5 truncate text-xs text-white/65', uiLanguage === 'Tamil' && 'tamil-font')}>{translateFunctionType(functionDetails.type, uiLanguage)} <span className="mx-1">·</span>{functionDetails.venue}</p>
             </div>
           </div>
         </section>
@@ -165,7 +165,7 @@ export function DashboardScreen() {
 
     {showCloseSummary && <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowCloseSummary(false) }}><section role="dialog" aria-modal="true" aria-labelledby="close-summary-title" className="summary-dialog collection-report-print"><button type="button" onClick={() => setShowCloseSummary(false)} aria-label={localized(uiLanguage, 'Close summary', 'சுருக்கத்தை மூடு')} className="dialog-close"><X /></button><p className="eyebrow">{localized(uiLanguage, 'END OF DAY', 'நாளின் முடிவு')}</p><h2 id="close-summary-title" className="mt-2 text-2xl font-semibold">{localized(uiLanguage, 'Collection summary', 'வசூல் சுருக்கம்')}</h2><p className="mt-1 text-sm text-muted-foreground">{functionDetails.name}</p><div className="summary-total-block"><span>{localized(uiLanguage, 'Total collection', 'மொத்த வசூல்')}</span><strong>{formatRupees(total)}</strong><span>{entries.length} {localized(uiLanguage, 'entries', 'பதிவுகள்')}</span></div><div className="mt-5 flex flex-col divide-y divide-border">{paymentModes.map((item) => <div key={item} className="flex items-center justify-between py-3 text-sm"><span className="flex items-center gap-2"><span className={`mix-dot mix-${item.toLowerCase()}`} />{localized(uiLanguage, item, modeTamil[item])}</span><strong className="tabular-nums">{formatRupees(totals[item])}</strong></div>)}</div><div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row"><button type="button" onClick={printReport} className="secondary-action flex-1"><Printer className="size-4" /><DashboardLabel english="Print Report" tamil="அறிக்கையை அச்சிடு" /></button><button type="button" onClick={async () => { await closeCollection(functionDetails.id); setShowCloseSummary(false) }} className="primary-action flex-1"><Check className="size-4" /><DashboardLabel english="Close Collection" tamil="வசூலை முடிக்கவும்" /></button></div></section></div>}
 
-    {showCreatePrompt && !hasFunctionToday && <div className="dialog-backdrop"><section role="dialog" aria-modal="true" aria-labelledby="create-function-title" className="summary-dialog create-function-dialog"><button type="button" onClick={() => setShowCreatePrompt(false)} aria-label={localized(uiLanguage, 'Close', 'மூடு')} className="dialog-close"><X /></button><div className="no-function-icon"><CalendarDays /></div><p className="eyebrow mt-4">{localized(uiLanguage, 'WELCOME', 'வரவேற்கிறோம்')}</p><h2 id="create-function-title" className="mt-2 text-2xl font-semibold">{localized(uiLanguage, "Create today's function", 'இன்றைய நிகழ்ச்சியை உருவாக்குங்கள்')}</h2><p className="mt-3 text-sm leading-6 text-muted-foreground">{localized(uiLanguage, 'Set up a function to begin collecting gifts and printing receipts.', 'பரிசுகளைச் சேகரித்து ரசீதுகளை அச்சிடத் தொடங்க ஒரு நிகழ்ச்சியை அமைக்கவும்.')}</p><Link to="/function-setup" className="primary-action mt-5 w-full"><CirclePlus className="size-4" /><DashboardLabel english="Set Up Function" tamil="நிகழ்ச்சியை அமைக்கவும்" /><ArrowRight className="size-4" /></Link></section></div>}
+    {showCreatePrompt && !hasFunctionToday && <div className="dialog-backdrop"><section role="dialog" aria-modal="true" aria-labelledby="create-function-title" className="summary-dialog create-function-dialog"><button type="button" onClick={() => setCreatePromptDismissed(true)} aria-label={localized(uiLanguage, 'Close', 'மூடு')} className="dialog-close"><X /></button><div className="no-function-icon"><CalendarDays /></div><p className="eyebrow mt-4">{localized(uiLanguage, 'WELCOME', 'வரவேற்கிறோம்')}</p><h2 id="create-function-title" className="mt-2 text-2xl font-semibold">{localized(uiLanguage, "Create today's function", 'இன்றைய நிகழ்ச்சியை உருவாக்குங்கள்')}</h2><p className="mt-3 text-sm leading-6 text-muted-foreground">{localized(uiLanguage, 'Set up a function to begin collecting gifts and printing receipts.', 'பரிசுகளைச் சேகரித்து ரசீதுகளை அச்சிடத் தொடங்க ஒரு நிகழ்ச்சியை அமைக்கவும்.')}</p><Link to="/function-setup" className="primary-action mt-5 w-full"><CirclePlus className="size-4" /><DashboardLabel english="Set Up Function" tamil="நிகழ்ச்சியை அமைக்கவும்" /><ArrowRight className="size-4" /></Link></section></div>}
   </AppShell>
 }
 

@@ -1,4 +1,4 @@
-﻿import { Route, Routes } from 'react-router-dom'
+﻿import { Route, Routes, Navigate } from 'react-router-dom'
 import { CalendarScreen } from '@/components/ceremony/calendar-screen'
 import { CollectionScreen } from '@/components/ceremony/collection-screen'
 import { CompletedScreen } from '@/components/ceremony/completed-screen'
@@ -15,16 +15,21 @@ import { RequireAuth, RedirectIfAuthenticated } from '@/components/RequireAuth'
 function App() {
   return (
     <Routes>
-      {/* Public auth pages - bounce logged-in users away */}
+
+      {/* Public authentication routes */}
       <Route element={<RedirectIfAuthenticated />}>
         <Route path="/login" element={<LoginScreen />} />
         <Route path="/register" element={<RegisterScreen />} />
-        {/* Google redirects here with the token in the URL hash. */}
-        <Route path="/auth/callback" element={<GoogleCallbackScreen />} />
       </Route>
 
-      {/* Protected app routes */}
-      <Route element={<RequireAuth />}>
+      {/* Google OAuth callback */}
+      <Route
+        path="/auth/callback"
+        element={<GoogleCallbackScreen />}
+      />
+
+      {/* Protected application routes */}
+      <Route element={<RequireAuth />}> 
         <Route path="/" element={<DashboardScreen />} />
         <Route path="/calendar" element={<CalendarScreen />} />
         <Route path="/collection" element={<CollectionScreen />} />
@@ -33,8 +38,14 @@ function App() {
         <Route path="/entries-history" element={<HistoryScreen />} />
         <Route path="/completed" element={<CompletedScreen />} />
         <Route path="/function-setup" element={<SetupScreen />} />
+
+        {/* Unknown protected routes */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
-      <Route path="*" element={<LoginScreen />} />
+
+      {/* Fallback */}
+      <Route path="*" element={<Navigate to="/login" replace />} />
+
     </Routes>
   )
 }

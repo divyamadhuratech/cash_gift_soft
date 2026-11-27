@@ -2,11 +2,12 @@ import { useMemo, useState } from 'react'
 import { Archive, CalendarDays, ChevronLeft, ChevronRight, CirclePlus, MapPin, PencilLine, PlayCircle } from 'lucide-react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { AppShell, PageHeading, StatusBadge, Surface, UiText } from '@/components/ceremony/shared'
-import { formatScheduleDate, localized, monthKey, statusForDate, todayISO, useCeremony } from '@/components/ceremony-provider'
+import { useCeremony } from '@/contexts/ceremony-context'
+import { formatScheduleDate, localized, monthKey, statusForDate, todayISO } from '@/lib/ceremony-format'
 import { cn } from '@/lib/utils'
 
 const weekdayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const weekdayTamil = ['திங்கடி', 'செவ்வாய்', 'புதன்', 'வியாழன்', 'வெள்ளி', 'சனி', 'ஞாயிறு']
+const weekdayTamil = ['திங்கள்','செவ்வாய்', 'புதன்', 'வியாழன்', 'வெள்ளி', 'சனி', 'ஞாயிறு']
 const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 const monthNamesTamil = ['ஜனவரி', 'பிப்ரவரி', 'மார்ச்', 'ஏப்ரல்', 'மே', 'ஜூன்', 'ஜூலை', 'ஆகஸ்ட்', 'செப்டம்பர்', 'அக்டோபர்', 'நவம்பர்', 'டிசம்பர்']
 
@@ -29,6 +30,7 @@ export function CalendarScreen() {
   const [view, setView] = useState({ year: today.getFullYear(), month: today.getMonth() })
   const [selectedDate, setSelectedDate] = useState('')
   const [scope, setScope] = useState('upcoming')
+  const [startingId, setStartingId] = useState('')
   // Setup hands its "saved, but not opened" explanation over here.
   const [switchError, setSwitchError] = useState(location.state?.notice ?? '')
 
@@ -59,13 +61,21 @@ export function CalendarScreen() {
    * once the switch actually succeeded and otherwise show why it did not.
    */
   async function openCollection(id) {
+    // A second click while the open request is running would POST the open
+    // again; ignore repeats instead.
+    if (startingId) return
     setSwitchError('')
-    const result = await startCollection(id)
-    if (result.ok) {
-      navigate('/collection')
-      return
+    setStartingId(id)
+    try {
+      const result = await startCollection(id)
+      if (result.ok) {
+        navigate('/collection')
+        return
+      }
+      setSwitchError(result.error ?? 'Could not open that collection.')
+    } finally {
+      setStartingId('')
     }
-    setSwitchError(result.error ?? 'Could not open that collection.')
   }
 
   function shiftMonth(delta) {
@@ -174,7 +184,7 @@ export function CalendarScreen() {
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2 pl-0 sm:pl-15">
-                  <button type="button" onClick={() => openCollection(item.id)} className="primary-action min-h-11 flex-1 px-3 text-xs"><PlayCircle className="size-4" />{localized(uiLanguage, 'Start collection', 'சேகரிப்பைத் தொடங்கு')}</button>
+                  <button type="button" onClick={() => openCollection(item.id)} disabled={startingId === item.id} className="primary-action min-h-11 flex-1 px-3 text-xs"><PlayCircle className="size-4" />{startingId === item.id ? localized(uiLanguage, 'Starting…', 'தொடங்குகிறது…') : localized(uiLanguage, 'Start collection', 'சேகரிப்பைத் தொடங்கு')}</button>
                   <Link to={`/function-setup?edit=${item.id}`} className="secondary-action min-h-11 flex-1 px-3 text-xs"><PencilLine className="size-4" />{localized(uiLanguage, 'Edit setup', 'அமைப்பைத் திருத்து')}</Link>
                 </div>
               </article>)}</div>}

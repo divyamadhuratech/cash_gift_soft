@@ -1,0 +1,346 @@
+{
+  "info": {
+    "name": "Muhurtham API Collection",
+    "description": "Backend API for the ceremony cash-gift app. Set {{baseUrl}} and {{token}} in collection variables (or let the Login request set {{token}} automatically). See docs/API_COLLECTION.md.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3005" },
+    { "key": "token", "value": "" },
+    { "key": "functionId", "value": "" },
+    { "key": "entryId", "value": "" },
+    { "key": "designId", "value": "" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health check",
+          "request": { "method": "GET", "auth": { "type": "noauth" }, "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] } }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const body = pm.response.json();", "if (body.token) pm.collectionVariables.set('token', body.token);", "pm.test('201 created', () => pm.expect(pm.response.code).to.eql(201));"] } }],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"tester@example.com\",\n  \"password\": \"secret123\",\n  \"displayName\": \"Tester\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/auth/register", "host": ["{{baseUrl}}"], "path": ["api", "auth", "register"] }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const body = pm.response.json();", "if (body.token) pm.collectionVariables.set('token', body.token);", "pm.test('200 ok', () => pm.expect(pm.response.code).to.eql(200));"] } }],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"tester@example.com\",\n  \"password\": \"secret123\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "auth", "login"] }
+          }
+        },
+        {
+          "name": "Google login status",
+          "request": { "method": "GET", "auth": { "type": "noauth" }, "url": { "raw": "{{baseUrl}}/api/auth/google/status", "host": ["{{baseUrl}}"], "path": ["api", "auth", "google", "status"] } }
+        },
+        {
+          "name": "Me",
+          "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/api/auth/me", "host": ["{{baseUrl}}"], "path": ["api", "auth", "me"] } }
+        },
+        {
+          "name": "Update me",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"displayName\": \"Renamed tester\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/auth/me", "host": ["{{baseUrl}}"], "path": ["api", "auth", "me"] }
+          }
+        },
+        {
+          "name": "Google login (id token)",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"credential\": \"<google_id_token>\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/auth/login/google", "host": ["{{baseUrl}}"], "path": ["api", "auth", "login", "google"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "item": [
+        {
+          "name": "Dashboard",
+          "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/api/dashboard", "host": ["{{baseUrl}}"], "path": ["api", "dashboard"] } }
+        }
+      ]
+    },
+    {
+      "name": "Functions",
+      "item": [
+        {
+          "name": "Create function (dup-safe)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const body = pm.response.json();", "if (body.function) pm.collectionVariables.set('functionId', body.function._id || body.function.id);", "pm.test('201 created or 200 duplicate', () => pm.expect([200, 201]).to.include(pm.response.code));"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"madhu&ramesh\",\n  \"type\": \"Wedding\",\n  \"venue\": \"townhall\",\n  \"date\": \"2026-11-20\",\n  \"targetCollection\": 100000,\n  \"language\": \"Both\",\n  \"entryFields\": [\n    { \"key\": \"name\", \"label\": \"Guest Name\", \"type\": \"text\", \"required\": true, \"builtin\": true, \"removable\": false },\n    { \"key\": \"giftType\", \"label\": \"Gift Type\", \"type\": \"select\", \"options\": [\"Cash\", \"Silver\"], \"required\": false }\n  ],\n  \"inviteeGroups\": [\"Groom side\", \"Bride side\", \"Friends\"]\n}" },
+            "url": { "raw": "{{baseUrl}}/api/functions", "host": ["{{baseUrl}}"], "path": ["api", "functions"] }
+          }
+        },
+        {
+          "name": "Create duplicate (regression: same POST twice)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const body = pm.response.json();", "pm.test('200 duplicate, not a new row', () => {", "  pm.expect(pm.response.code).to.eql(200);", "  pm.expect(body.duplicate).to.be.true;", "});"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"madhu&ramesh\",\n  \"type\": \"Wedding\",\n  \"venue\": \"townhall\",\n  \"date\": \"2026-11-20\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/functions", "host": ["{{baseUrl}}"], "path": ["api", "functions"] }
+          }
+        },
+        {
+          "name": "List functions (calendar)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/functions?archived=false",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "functions"],
+              "query": [
+                { "key": "archived", "value": "false" },
+                { "key": "status", "value": "Upcoming", "disabled": true },
+                { "key": "from", "value": "2026-11-01", "disabled": true },
+                { "key": "to", "value": "2026-11-30", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List archived functions",
+          "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/api/functions?archived=true", "host": ["{{baseUrl}}"], "path": ["api", "functions"], "query": [{ "key": "archived", "value": "true" }] } }
+        },
+        {
+          "name": "Get function",
+          "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/api/functions/{{functionId}}", "host": ["{{baseUrl}}"], "path": ["api", "functions", "{{functionId}}"] } }
+        },
+        {
+          "name": "Update function",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"venue\": \"townhall main hall\",\n  \"targetCollection\": 150000\n}" },
+            "url": { "raw": "{{baseUrl}}/api/functions/{{functionId}}", "host": ["{{baseUrl}}"], "path": ["api", "functions", "{{functionId}}"] }
+          }
+        },
+        {
+          "name": "Open collection",
+          "request": { "method": "POST", "url": { "raw": "{{baseUrl}}/api/functions/{{functionId}}/open", "host": ["{{baseUrl}}"], "path": ["api", "functions", "{{functionId}}", "open"] } }
+        },
+        {
+          "name": "Recompute totals",
+          "request": { "method": "POST", "url": { "raw": "{{baseUrl}}/api/functions/{{functionId}}/recompute", "host": ["{{baseUrl}}"], "path": ["api", "functions", "{{functionId}}", "recompute"] } }
+        },
+        {
+          "name": "Close collection",
+          "request": { "method": "POST", "url": { "raw": "{{baseUrl}}/api/functions/{{functionId}}/close", "host": ["{{baseUrl}}"], "path": ["api", "functions", "{{functionId}}", "close"] } }
+        },
+        {
+          "name": "Reopen collection",
+          "request": { "method": "POST", "url": { "raw": "{{baseUrl}}/api/functions/{{functionId}}/reopen", "host": ["{{baseUrl}}"], "path": ["api", "functions", "{{functionId}}", "reopen"] } }
+        },
+        {
+          "name": "Clear entries (destructive)",
+          "request": { "method": "POST", "url": { "raw": "{{baseUrl}}/api/functions/{{functionId}}/clear-entries", "host": ["{{baseUrl}}"], "path": ["api", "functions", "{{functionId}}", "clear-entries"] } }
+        },
+        {
+          "name": "Delete function",
+          "request": { "method": "DELETE", "url": { "raw": "{{baseUrl}}/api/functions/{{functionId}}", "host": ["{{baseUrl}}"], "path": ["api", "functions", "{{functionId}}"] } }
+        }
+      ]
+    },
+    {
+      "name": "Entries",
+      "item": [
+        {
+          "name": "Create entry",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const body = pm.response.json();", "if (body.entry) pm.collectionVariables.set('entryId', body.entry._id || body.entry.id);", "pm.test('201 created', () => pm.expect(pm.response.code).to.eql(201));"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"function\": \"{{functionId}}\",\n  \"name\": \"Suresh Kumar\",\n  \"city\": \"Madurai\",\n  \"relation\": \"Uncle\",\n  \"amount\": 5000,\n  \"mode\": \"UPI\",\n  \"paymentDetails\": { \"upiId\": \"suresh@okhdfc\", \"upiRef\": \"523144778890\" }\n}" },
+            "url": { "raw": "{{baseUrl}}/api/entries", "host": ["{{baseUrl}}"], "path": ["api", "entries"] }
+          }
+        },
+        {
+          "name": "List entries",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/entries?function={{functionId}}&limit=100",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "entries"],
+              "query": [
+                { "key": "function", "value": "{{functionId}}" },
+                { "key": "limit", "value": "100" },
+                { "key": "skip", "value": "0", "disabled": true },
+                { "key": "mode", "value": "Cash", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Duplicate receipt (expect 409)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"function\": \"{{functionId}}\",\n  \"name\": \"Repeat Guest\",\n  \"amount\": 100,\n  \"receipt\": \"R-0101\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/entries", "host": ["{{baseUrl}}"], "path": ["api", "entries"] }
+          }
+        },
+        {
+          "name": "Get entry",
+          "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/api/entries/{{entryId}}", "host": ["{{baseUrl}}"], "path": ["api", "entries", "{{entryId}}"] } }
+        },
+        {
+          "name": "Update entry",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"amount\": 6000,\n  \"city\": \"Chennai\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/entries/{{entryId}}", "host": ["{{baseUrl}}"], "path": ["api", "entries", "{{entryId}}"] }
+          }
+        },
+        {
+          "name": "Delete entry",
+          "request": { "method": "DELETE", "url": { "raw": "{{baseUrl}}/api/entries/{{entryId}}", "host": ["{{baseUrl}}"], "path": ["api", "entries", "{{entryId}}"] } }
+        }
+      ]
+    },
+    {
+      "name": "Designs",
+      "item": [
+        {
+          "name": "List designs",
+          "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/api/designs", "host": ["{{baseUrl}}"], "path": ["api", "designs"], "query": [{ "key": "function", "value": "{{functionId}}", "disabled": true }] } }
+        },
+        {
+          "name": "Create design",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const body = pm.response.json();", "if (body.design) pm.collectionVariables.set('designId', body.design._id || body.design.id);", "pm.test('201 created', () => pm.expect(pm.response.code).to.eql(201));"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Receipt design\",\n  \"function\": \"{{functionId}}\",\n  \"template\": \"Classic\",\n  \"paper\": \"A6\",\n  \"language\": \"Both\",\n  \"elements\": [\n    { \"id\": \"title\", \"name\": \"Title\", \"kind\": \"text\", \"english\": \"Shree Ganeshaya Namah\", \"visible\": true, \"order\": 0 }\n  ],\n  \"entriesDesign\": { \"sheet\": \"Plain A4\", \"columns\": [\"serial\", \"name\", \"amount\"], \"showTotals\": true }\n}" },
+            "url": { "raw": "{{baseUrl}}/api/designs", "host": ["{{baseUrl}}"], "path": ["api", "designs"] }
+          }
+        },
+        {
+          "name": "Get design",
+          "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/api/designs/{{designId}}", "host": ["{{baseUrl}}"], "path": ["api", "designs", "{{designId}}"] } }
+        },
+        {
+          "name": "Update design",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"accent\": \"#947632\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/designs/{{designId}}", "host": ["{{baseUrl}}"], "path": ["api", "designs", "{{designId}}"] }
+          }
+        },
+        {
+          "name": "Set default design",
+          "request": { "method": "POST", "url": { "raw": "{{baseUrl}}/api/designs/{{designId}}/default", "host": ["{{baseUrl}}"], "path": ["api", "designs", "{{designId}}", "default"] } }
+        },
+        {
+          "name": "Duplicate design",
+          "request": { "method": "POST", "url": { "raw": "{{baseUrl}}/api/designs/{{designId}}/duplicate", "host": ["{{baseUrl}}"], "path": ["api", "designs", "{{designId}}", "duplicate"] } }
+        },
+        {
+          "name": "Delete design",
+          "request": { "method": "DELETE", "url": { "raw": "{{baseUrl}}/api/designs/{{designId}}", "host": ["{{baseUrl}}"], "path": ["api", "designs", "{{designId}}"] } }
+        }
+      ]
+    },
+    {
+      "name": "Uploads",
+      "item": [
+        {
+          "name": "Storage info",
+          "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/api/uploads/info", "host": ["{{baseUrl}}"], "path": ["api", "uploads", "info"] } }
+        },
+        {
+          "name": "Upload image",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "image", "type": "file", "src": [] },
+                { "key": "folder", "value": "logo", "type": "text" }
+              ]
+            },
+            "url": { "raw": "{{baseUrl}}/api/uploads", "host": ["{{baseUrl}}"], "path": ["api", "uploads"] }
+          }
+        },
+        {
+          "name": "Upload images (batch)",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [{ "key": "images", "type": "file", "src": [] }]
+            },
+            "url": { "raw": "{{baseUrl}}/api/uploads/batch", "host": ["{{baseUrl}}"], "path": ["api", "uploads", "batch"] }
+          }
+        },
+        {
+          "name": "Delete upload",
+          "request": { "method": "DELETE", "url": { "raw": "{{baseUrl}}/api/uploads/logo/example.png", "host": ["{{baseUrl}}"], "path": ["api", "uploads", "logo", "example.png"] } }
+        }
+      ]
+    },
+    {
+      "name": "WhatsApp",
+      "item": [
+        {
+          "name": "Status (QR)",
+          "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/api/whatsapp/status", "host": ["{{baseUrl}}"], "path": ["api", "whatsapp", "status"] } }
+        },
+        {
+          "name": "Send receipt",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"phone\": \"919999999999\",\n  \"message\": \"Receipt R-0101 — thank you for your gift!\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/whatsapp/send-receipt", "host": ["{{baseUrl}}"], "path": ["api", "whatsapp", "send-receipt"] }
+          }
+        },
+        {
+          "name": "Reset session",
+          "request": { "method": "POST", "url": { "raw": "{{baseUrl}}/api/whatsapp/reset", "host": ["{{baseUrl}}"], "path": ["api", "whatsapp", "reset"] } }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Admin dashboard",
+          "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/api/admin/dashboard", "host": ["{{baseUrl}}"], "path": ["api", "admin", "dashboard"] } }
+        }
+      ]
+    }
+  ]
+}

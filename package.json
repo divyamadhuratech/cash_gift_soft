@@ -9,7 +9,8 @@
     "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test:backend": "npm --prefix backend test"
+    "test:backend": "npm --prefix backend test",
+    "lint:fix": "oxlint --fix"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

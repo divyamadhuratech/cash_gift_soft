@@ -1,5 +1,5 @@
 import { hasTamilScript, convertTamilWord, tamilModeLabel } from '@/lib/tamil-transliteration'
-import { builtinEntryKeys } from '@/components/ceremony-provider'
+import { builtinEntryKeys } from '@/constants/ceremony-catalog'
 
 /**
  * One collection-form input, rendered from a Function.entryFields entry.

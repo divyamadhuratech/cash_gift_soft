@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 import { api } from "@/lib/api";
 
 export function useDashboard() {
@@ -10,25 +10,30 @@ export function useDashboard() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!isAuthenticated) {
-      setLoading(false);
-      return;
-    }
+    // Deferred so the state resets below don't fire synchronously during the
+    // effect pass — they land on the next microtask, same visible behaviour.
+    queueMicrotask(() => {
+      if (cancelled) return;
+      if (!isAuthenticated) {
+        setLoading(false);
+        return;
+      }
 
-    setLoading(true);
-    setError("");
+      setLoading(true);
+      setError("");
 
-    api
-      .get("/dashboard")
-      .then((res) => {
-        if (!cancelled) setData(res.data);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err.response?.data?.message || "Failed to load dashboard");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+      api
+        .get("/dashboard")
+        .then((res) => {
+          if (!cancelled) setData(res.data);
+        })
+        .catch((err) => {
+          if (!cancelled) setError(err.response?.data?.message || "Failed to load dashboard");
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    });
 
     return () => {
       cancelled = true;
